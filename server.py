@@ -186,13 +186,48 @@ def format_messages(messages: List[Message]) -> str:
 
 
 # --- Endpoints ---
+@app.get("/v1/models")
+async def list_models():
+    """
+    Returns the supported models in OpenAI format.
+    """
+    from gemini_webapi import Model
+    models = []
+    # Simplified mapping for common models
+    for m in Model:
+        if m.name != "UNSPECIFIED":
+            models.append({"id": m.value[0], "object": "model", "created": 1677610602, "owned_by": "google"})
+    
+    # Add common aliases for better compatibility with tools like OpenClaw
+    models.append({"id": "gemini", "object": "model", "created": 1677610602, "owned_by": "google"})
+    models.append({"id": "gpt-3.5-turbo", "object": "model", "created": 1677610602, "owned_by": "google"})
+    
+    return {"object": "list", "data": models}
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     global client
+    from gemini_webapi import Model
 
-    # Simple prompt construction (could be improved to use true chat history if wrapper allows)
+    # 1. Map requested model to Gemini model
+    target_model = Model.G_3_0_PRO # Default
+    req_model_lower = request.model.lower()
+    
+    if "flash" in req_model_lower:
+        target_model = Model.G_3_0_FLASH
+    elif "1.5" in req_model_lower and "pro" in req_model_lower:
+        # Check if 1.5 PRO exists in the enum (depends on library version)
+        try:
+            target_model = getattr(Model, "G_1_5_PRO")
+        except: pass
+    elif "1.5" in req_model_lower and "flash" in req_model_lower:
+        try:
+            target_model = getattr(Model, "G_1_5_FLASH")
+        except: pass
+
+    # Simple prompt construction
     prompt = format_messages(request.messages)
-
+    
     # Start a fresh chat session for this request to ensure statelessness from the API perspective
     # (The OpenAI API expects the client to provide full history, so we treat each req as new)
     chat = client.start_chat()
@@ -217,7 +252,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
                 yield f"data: {chunk_data.json()}\n\n"
 
-                async for chunk in chat.send_message_stream(prompt):
+                async for chunk in chat.send_message_stream(prompt, model=target_model):
                     if chunk.text_delta:
                         chunk_data = ChatCompletionChunk(
                             id=request_id,
@@ -267,7 +302,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
     else:
         try:
-            response = await chat.send_message(prompt)
+            response = await chat.send_message(prompt, model=target_model)
             print(f"DEBUG Response: {response.text}")
 
             return ChatCompletionResponse(
