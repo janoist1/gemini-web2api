@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# Gemini API Service Installer for Raspberry Pi
-
 SERVICE_NAME="gemini-api"
 SERVICE_FILE="${SERVICE_NAME}.service"
 INSTALL_DIR=$(pwd)
+CURRENT_USER=$(whoami)
 SYSTEMD_DIR="/etc/systemd/system"
 
 echo "--- Installing Gemini API Service ---"
+echo "Detected User: $CURRENT_USER"
+echo "Detected Path: $INSTALL_DIR"
 
 # 1. Check if service file exists
 if [ ! -f "$SERVICE_FILE" ]; then
@@ -15,10 +16,8 @@ if [ ! -f "$SERVICE_FILE" ]; then
     exit 1
 fi
 
-# 2. Update the WorkingDirectory and ExecStart in the service file to match current path
-# We use a temporary file to avoid corrupting the original
-sed "s|WorkingDirectory=.*|WorkingDirectory=${INSTALL_DIR}|" "$SERVICE_FILE" > "${SERVICE_FILE}.tmp"
-sed -i "s|ExecStart=.*|ExecStart=${INSTALL_DIR}/.venv/bin/python gemini.py server|" "${SERVICE_FILE}.tmp"
+# 2. Update placeholders in the service file
+sed "s|{{WORKDIR}}|${INSTALL_DIR}|g; s|{{USER}}|${CURRENT_USER}|g" "$SERVICE_FILE" > "${SERVICE_FILE}.tmp"
 
 # 3. Copy to systemd
 echo "Copying service file to $SYSTEMD_DIR..."
