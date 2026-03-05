@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.bak
+.DS_Store
+.cached_1psidts_*.txt
+*.tmp
+# Local cache directory
+gemini_api_lib/src/gemini_webapi/utils/temp/

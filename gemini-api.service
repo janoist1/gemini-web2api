@@ -1,0 +1,17 @@
+[Unit]
+Description=Gemini Web2API Proxy Server
+After=network.target
+
+[Service]
+User=i
+WorkingDirectory=/home/i/gemini-web2api
+# A gemini.py-n keresztül indítjuk, mert az állítja be a PYTHONPATH-t a patchekhez
+ExecStart=/home/i/gemini-web2api/.venv/bin/python gemini.py server
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=gemini-api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+gemini_webapi
+python-dotenv
+black
+browser-cookie3
