@@ -76,7 +76,10 @@ client: GeminiClient = None
 # --- Pydantic Models for OpenAI API Compatibility ---
 class Message(BaseModel):
     role: str
-    content: str
+    content: Union[str, List[Dict[str, Any]]]
+
+    class Config:
+        extra = "ignore"
 
 
 class ChatCompletionRequest(BaseModel):
@@ -86,6 +89,15 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = 1.0
     top_p: Optional[float] = 1.0
     n: Optional[int] = 1
+    max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
+    stop: Optional[Union[str, List[str]]] = None
+    presence_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 0.0
+    user: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
 
 
 class ChatCompletionChoice(BaseModel):
@@ -105,7 +117,7 @@ class ChatCompletionResponse(BaseModel):
 
 class ChatCompletionChunkChoice(BaseModel):
     index: int
-    delta: Dict[str, str]
+    delta: Dict[str, Any]
     finish_reason: Optional[str] = None
 
 
@@ -142,21 +154,6 @@ async def startup_event():
 # --- Helper Functions ---
 def format_messages(messages: List[Message]) -> str:
     """
-    Combines messages into a single prompt for Gemini,
-    as the web wrapper might behave better with a single block of context
-    if we aren't using the formal chat session objects strictly for every turn
-    or if we want to mimic the full context window.
-
-    However, GeminiClient.start_chat() is better for real multi-turn.
-    For this proxy, since OpenAI API is stateless per request (sends full history),
-    we can either:
-    1. Reconstruct the chat history in a new ChatSession for every request.
-    2. Just concatenate everything into a big prompt if the model supports it.
-
-    The wrapper `start_chat` + `send_message` seems robust.
-    `gemini_webapi` doesn't explicitly support passing a full history list to `start_chat` easily
-    without inspecting the implementation details of `metadata`.
-
     Strategy:
     Concatenate previous messages into a "history" block in the prompt,
     and send the last user message as the actual message.
@@ -165,14 +162,26 @@ def format_messages(messages: List[Message]) -> str:
     history_text = ""
     last_user_message = ""
 
+    def extract_text(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            texts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    texts.append(part.get("text", ""))
+            return " ".join(texts)
+        return str(content)
+
     for i, msg in enumerate(messages):
+        content_text = extract_text(msg.content)
         if msg.role == "system":
-            system_instruction += f"System Instruction: {msg.content}\n"
+            system_instruction += f"System Instruction: {content_text}\n"
         elif i == len(messages) - 1 and msg.role == "user":
-            last_user_message = msg.content
+            last_user_message = content_text
         else:
             role_name = "User" if msg.role == "user" else "Assistant"
-            history_text += f"{role_name}: {msg.content}\n"
+            history_text += f"{role_name}: {content_text}\n"
 
     final_prompt = ""
     if system_instruction:
