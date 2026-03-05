@@ -227,9 +227,8 @@ async def chat_completions(request: ChatCompletionRequest):
     # Simple prompt construction
     prompt = format_messages(request.messages)
     
-    # Start a fresh chat session for this request to ensure statelessness from the API perspective
-    # (The OpenAI API expects the client to provide full history, so we treat each req as new)
-    chat = client.start_chat()
+    # 2. Start a fresh chat session for this request with the target model
+    chat = client.start_chat(model=target_model)
 
     request_id = f"chatcmpl-{int(time.time())}"
     created_time = int(time.time())
@@ -251,7 +250,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
                 yield f"data: {chunk_data.json()}\n\n"
 
-                async for chunk in chat.send_message_stream(prompt, model=target_model):
+                async for chunk in chat.send_message_stream(prompt):
                     if chunk.text_delta:
                         chunk_data = ChatCompletionChunk(
                             id=request_id,
@@ -301,7 +300,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
     else:
         try:
-            response = await chat.send_message(prompt, model=target_model)
+            response = await chat.send_message(prompt)
             print(f"DEBUG Response: {response.text}")
 
             return ChatCompletionResponse(
