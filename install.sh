@@ -10,13 +10,25 @@ echo "--- Installing Gemini API Service ---"
 echo "Detected User: $CURRENT_USER"
 echo "Detected Path: $INSTALL_DIR"
 
-# 1. Check if service file exists
+# 1. Environment Setup (The VENV check)
+if [ ! -d ".venv" ]; then
+    echo "Virtual environment not found. Creating it now..."
+    python3 -m venv .venv
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create virtual environment. Ensure python3-venv is installed."
+        exit 1
+    fi
+    echo "Installing requirements..."
+    ./.venv/bin/pip install -r requirements.txt
+fi
+
+# 2. Check if service file exists
 if [ ! -f "$SERVICE_FILE" ]; then
     echo "Error: $SERVICE_FILE not found in $INSTALL_DIR"
     exit 1
 fi
 
-# 2. Update placeholders in the service file
+# 3. Update placeholders in the service file
 sed "s|{{WORKDIR}}|${INSTALL_DIR}|g; s|{{USER}}|${CURRENT_USER}|g" "$SERVICE_FILE" > "${SERVICE_FILE}.tmp"
 
 # 3. Copy to systemd
