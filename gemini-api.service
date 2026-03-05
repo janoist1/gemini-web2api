@@ -8,8 +8,8 @@ WorkingDirectory={{WORKDIR}}
 ExecStart={{WORKDIR}}/.venv/bin/python gemini.py server
 Restart=always
 RestartSec=10
-StandardOutput=syslog
-StandardError=syslog
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=gemini-api
 
 [Install]
