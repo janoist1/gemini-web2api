@@ -10,7 +10,13 @@ echo "--- Installing Gemini API Service ---"
 echo "Detected User: $CURRENT_USER"
 echo "Detected Path: $INSTALL_DIR"
 
-# 1. Environment Setup (The VENV check)
+# 1. Submodule Setup
+if [ -d ".git" ]; then
+    echo "Updating submodules..."
+    git submodule update --init --recursive
+fi
+
+# 2. Environment Setup (The VENV check)
 if [ ! -d ".venv" ]; then
     echo "Virtual environment not found. Creating it now..."
     python3 -m venv .venv
