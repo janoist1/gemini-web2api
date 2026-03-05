@@ -191,39 +191,38 @@ async def list_models():
     """
     Returns the supported models in OpenAI format.
     """
-    from gemini_webapi import Model
+    from gemini_webapi.constants import Model
     models = []
     # Simplified mapping for common models
     for m in Model:
-        if m.name != "UNSPECIFIED":
-            models.append({"id": m.value[0], "object": "model", "created": 1677610602, "owned_by": "google"})
+        if m.model_name != "unspecified":
+            models.append({"id": m.model_name, "object": "model", "created": 1677610602, "owned_by": "google"})
     
     # Add common aliases for better compatibility with tools like OpenClaw
     models.append({"id": "gemini", "object": "model", "created": 1677610602, "owned_by": "google"})
-    models.append({"id": "gpt-3.5-turbo", "object": "model", "created": 1677610602, "owned_by": "google"})
     
     return {"object": "list", "data": models}
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     global client
-    from gemini_webapi import Model
+    from gemini_webapi.constants import Model
 
     # 1. Map requested model to Gemini model
     target_model = Model.G_3_0_PRO # Default
     req_model_lower = request.model.lower()
     
-    if "flash" in req_model_lower:
+    if "thinking" in req_model_lower:
+        target_model = Model.G_3_0_FLASH_THINKING
+    elif "flash" in req_model_lower:
         target_model = Model.G_3_0_FLASH
-    elif "1.5" in req_model_lower and "pro" in req_model_lower:
-        # Check if 1.5 PRO exists in the enum (depends on library version)
-        try:
-            target_model = getattr(Model, "G_1_5_PRO")
-        except: pass
-    elif "1.5" in req_model_lower and "flash" in req_model_lower:
-        try:
-            target_model = getattr(Model, "G_1_5_FLASH")
-        except: pass
+    elif "1.5" in req_model_lower:
+        # Check for 1.5 variants if they exist in the Enum
+        for m in Model:
+            if "1.5" in m.model_name and ("pro" in req_model_lower or "flash" in req_model_lower):
+                if ("pro" in m.model_name and "pro" in req_model_lower) or ("flash" in m.model_name and "flash" in req_model_lower):
+                    target_model = m
+                    break
 
     # Simple prompt construction
     prompt = format_messages(request.messages)
