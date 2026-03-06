@@ -101,6 +101,7 @@ def extract_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
             data = json.loads(block)
             if isinstance(data, dict) and "action" in data and "parameters" in data:
                 tool_calls.append({
+                    "index": len(tool_calls),
                     "id": f"call_{int(time.time())}_{len(tool_calls)}",
                     "type": "function",
                     "function": {
@@ -292,6 +293,7 @@ async def chat_completions(request: ChatCompletionRequest):
     if request.stream:
 
         async def stream_generator():
+            full_text = ""
             try:
                 # Initial chunk
                 chunk_data = ChatCompletionChunk(
@@ -308,6 +310,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
                 async for chunk in chat.send_message_stream(prompt):
                     if chunk.text_delta:
+                        full_text += chunk.text_delta
                         chunk_data = ChatCompletionChunk(
                             id=request_id,
                             created=created_time,
@@ -322,14 +325,19 @@ async def chat_completions(request: ChatCompletionRequest):
                         )
                         yield f"data: {chunk_data.json()}\n\n"
 
-                # Final chunk
+                # Final chunk - check for tool calls in the accumulated text
+                tool_calls = extract_tool_calls(full_text)
+                finish_reason = "tool_calls" if tool_calls else "stop"
+                
                 chunk_data = ChatCompletionChunk(
                     id=request_id,
                     created=created_time,
                     model=request.model,
                     choices=[
                         ChatCompletionChunkChoice(
-                            index=0, delta={}, finish_reason="stop"
+                            index=0, 
+                            delta={"tool_calls": tool_calls} if tool_calls else {}, 
+                            finish_reason=finish_reason
                         )
                     ],
                 )
@@ -338,6 +346,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
             except Exception as e:
                 print(f"Error streaming response: {e}")
+                # ... same error handling as before
                 error_chunk = ChatCompletionChunk(
                     id=request_id,
                     created=created_time,
