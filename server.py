@@ -76,10 +76,42 @@ client: GeminiClient = None
 # --- Pydantic Models for OpenAI API Compatibility ---
 class Message(BaseModel):
     role: str
-    content: Union[str, List[Dict[str, Any]]]
+    content: Optional[Union[str, List[Dict[str, Any]]]] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         extra = "ignore"
+
+
+def extract_tool_calls(text: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Looks for JSON blocks in the text that follow our ReAct format:
+    { "action": "tool_name", "parameters": { ... } }
+    """
+    import re
+    # Look for ```json ... ``` blocks
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    if not json_blocks:
+        # Try finding raw JSON objects if no markdown blocks
+        json_blocks = re.findall(r"(\{.*\"action\".*\"parameters\".*\})", text, re.DOTALL)
+
+    tool_calls = []
+    for block in json_blocks:
+        try:
+            data = json.loads(block)
+            if isinstance(data, dict) and "action" in data and "parameters" in data:
+                tool_calls.append({
+                    "id": f"call_{int(time.time())}_{len(tool_calls)}",
+                    "type": "function",
+                    "function": {
+                        "name": data["action"],
+                        "arguments": json.dumps(data["parameters"])
+                    }
+                })
+        except:
+            continue
+    
+    return tool_calls if tool_calls else None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -327,6 +359,9 @@ async def chat_completions(request: ChatCompletionRequest):
             response = await chat.send_message(prompt)
             print(f"DEBUG Response: {response.text}")
 
+            tool_calls = extract_tool_calls(response.text)
+            finish_reason = "tool_calls" if tool_calls else "stop"
+
             return ChatCompletionResponse(
                 id=request_id,
                 created=created_time,
@@ -334,11 +369,11 @@ async def chat_completions(request: ChatCompletionRequest):
                 choices=[
                     ChatCompletionChoice(
                         index=0,
-                        message=Message(role="assistant", content=response.text),
-                        finish_reason="stop",
+                        message=Message(role="assistant", content=response.text, tool_calls=tool_calls),
+                        finish_reason=finish_reason,
                     )
                 ],
-                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                usage={"prompt_tokens": len(prompt.split()), "completion_tokens": len(response.text.split()), "total_tokens": len(prompt.split()) + len(response.text.split())}
             )
         except Exception as e:
             import traceback
