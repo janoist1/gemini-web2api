@@ -95,6 +95,8 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
     user: Optional[str] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
 
     class Config:
         extra = "ignore"
@@ -152,7 +154,7 @@ async def startup_event():
 
 
 # --- Helper Functions ---
-def format_messages(messages: List[Message]) -> str:
+def format_messages(messages: List[Message], tools: Optional[List[Dict[str, Any]]] = None) -> str:
     """
     Strategy:
     Concatenate previous messages into a "history" block in the prompt,
@@ -176,20 +178,33 @@ def format_messages(messages: List[Message]) -> str:
     for i, msg in enumerate(messages):
         content_text = extract_text(msg.content)
         if msg.role == "system":
-            system_instruction += f"System Instruction: {content_text}\n"
+            system_instruction += f"{content_text}\n"
         elif i == len(messages) - 1 and msg.role == "user":
             last_user_message = content_text
         else:
             role_name = "User" if msg.role == "user" else "Assistant"
             history_text += f"{role_name}: {content_text}\n"
 
+    # Inject Tools if present (ReAct style)
+    if tools:
+        tools_desc = "\nAVAILABLE TOOLS:\n"
+        for tool in tools:
+            if tool.get("type") == "function":
+                func = tool.get("function", {})
+                tools_desc += f"- {func.get('name')}: {func.get('description')}\n"
+                tools_desc += f"  Parameters: {json.dumps(func.get('parameters'))}\n"
+        
+        system_instruction += f"\n{tools_desc}\n"
+        system_instruction += "\nIf you need to use a tool, respond ONLY with a JSON block in the following format:\n"
+        system_instruction += "```json\n{\n  \"action\": \"tool_name\",\n  \"parameters\": { ... }\n}\n```\n"
+
     final_prompt = ""
     if system_instruction:
-        final_prompt += f"{system_instruction}\n"
+        final_prompt += f"Background/Instructions:\n{system_instruction}\n"
     if history_text:
-        final_prompt += f"Here is the conversation history so far:\n{history_text}\n"
+        final_prompt += f"Conversation History:\n{history_text}\n"
 
-    final_prompt += f"\nPlease respond to the user's last message:\n{last_user_message}"
+    final_prompt += f"\nUser: {last_user_message}\nAssistant:"
 
     return final_prompt
 
@@ -234,7 +249,7 @@ async def chat_completions(request: ChatCompletionRequest):
                     break
 
     # Simple prompt construction
-    prompt = format_messages(request.messages)
+    prompt = format_messages(request.messages, tools=request.tools)
     
     # 2. Start a fresh chat session for this request with the target model
     chat = client.start_chat(model=target_model)
