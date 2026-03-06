@@ -261,6 +261,7 @@ async def list_models():
     return {"object": "list", "data": models}
 
 @app.post("/v1/chat/completions")
+@app.post("/v1/responses")
 async def chat_completions(request: ChatCompletionRequest):
     global client
     from gemini_webapi.constants import Model
